@@ -19,7 +19,7 @@
     constructor() {
       this.scrollInterval = null;
       this.isScrolling = false;
-      this.scrollDelay = 10000; // 10秒
+      this.scrollDelay = 25000; // 25秒
       this.worker = null;
 
       // 随机点赞
