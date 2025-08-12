@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         linux.do 阅读量刷新脚本
 // @namespace    http://tampermonkey.net/
-// @version      2025-08-12
+// @version      1.0.1
 // @description  try to take over the world!
 // @author       You
 // @match        https://linux.do/t/topic/*
