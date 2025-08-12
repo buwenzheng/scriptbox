@@ -1,11 +1,14 @@
 // ==UserScript==
 // @name         linux.do 阅读量刷新脚本
 // @namespace    http://tampermonkey.net/
-// @version      2025-08-11
+// @version      2025-08-12
 // @description  try to take over the world!
 // @author       You
 // @match        https://linux.do/t/topic/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=linux.do
+// @connect      raw.githubusercontent.com
+// @updateURL    https://raw.githubusercontent.com/buwenzheng/scriptbox/main/javascript/linuxdoAutoReadAndLike.js
+// @downloadURL  https://raw.githubusercontent.com/buwenzheng/scriptbox/main/javascript/linuxdoAutoReadAndLike.js
 // @grant        none
 // ==/UserScript==
 
