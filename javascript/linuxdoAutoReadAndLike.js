@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         linux.do 阅读量刷新脚本
 // @namespace    http://tampermonkey.net/
-// @version      1.0.2
+// @version      1.0.3
 // @description  try to take over the world!
 // @author       You
 // @match        https://linux.do/t/topic/*
@@ -71,6 +71,20 @@
                       cursor: not-allowed;
                   }
 
+                  #controlPanel .field {
+                      display: flex;
+                      align-items: center;
+                      gap: 6px;
+                  }
+
+                  #controlPanel input[type="number"] {
+                      width: 80px;
+                      padding: 6px 8px;
+                      border: 1px solid #ddd;
+                      border-radius: 5px;
+                      outline: none;
+                  }
+
                   .status {
                       display: flex;
                       align-items: center;
@@ -97,6 +111,19 @@
       this.likeToggleBtn.id = "likeToggleBtn";
       this.likeToggleBtn.textContent = "开启随机点赞";
 
+      // 停留时间（秒）设置
+      const delayField = document.createElement("div");
+      delayField.className = "field";
+      const delayLabel = document.createElement("label");
+      delayLabel.setAttribute("for", "delayInput");
+      delayLabel.textContent = "停留(秒)";
+      this.delayInput = document.createElement("input");
+      this.delayInput.type = "number";
+      this.delayInput.id = "delayInput";
+      this.delayInput.min = "1";
+      this.delayInput.value = String(Math.floor(this.scrollDelay / 1000));
+      delayField.append(delayLabel, this.delayInput);
+
       const statusContainer = document.createElement("div");
       statusContainer.className = "status";
       statusContainer.innerHTML = '状态: <span id="statusText">暂停中</span>';
@@ -114,6 +141,7 @@
         this.startBtn,
         this.pauseBtn,
         this.likeToggleBtn,
+        delayField,
         statusContainer,
         likeStatusContainer
       );
@@ -124,6 +152,10 @@
       this.startBtn.addEventListener("click", () => this.startAutoScroll());
       this.pauseBtn.addEventListener("click", () => this.pauseAutoScroll());
       this.likeToggleBtn.addEventListener("click", () => this.toggleAutoLike());
+      if (this.delayInput) {
+        this.delayInput.addEventListener("change", () => this.updateScrollDelayFromInput());
+        this.delayInput.addEventListener("blur", () => this.updateScrollDelayFromInput());
+      }
     }
 
     getViewportHeight() {
@@ -202,6 +234,7 @@
       const workerCode = `
                   let scrollTimeout;
                   let isActive = false;
+                  let delay = ${this.scrollDelay};
 
                   self.onmessage = function(e) {
                       if (e.data.command === 'start') {
@@ -210,6 +243,10 @@
                       } else if (e.data.command === 'pause') {
                           isActive = false;
                           clearTimeout(scrollTimeout);
+                      } else if (e.data.command === 'updateDelay') {
+                          if (typeof e.data.delay === 'number' && e.data.delay > 0) {
+                              delay = e.data.delay;
+                          }
                       }
                   };
 
@@ -219,7 +256,7 @@
                               self.postMessage({ action: 'scroll' });
                               scheduleScroll();
                           }
-                      }, ${this.scrollDelay});
+                      }, delay);
                   }
               `;
 
@@ -231,6 +268,9 @@
           this.performScroll();
         }
       };
+
+      // 初始化时同步一次 delay
+      this.worker.postMessage({ command: 'updateDelay', delay: this.scrollDelay });
     }
 
     // =============== 随机点赞功能 ===============
@@ -359,6 +399,31 @@
       });
 
       return filtered;
+    }
+
+    updateScrollDelayFromInput() {
+      if (!this.delayInput) return;
+      const seconds = parseInt(this.delayInput.value, 10);
+      const safeSeconds = Number.isFinite(seconds) && seconds > 0 ? seconds : Math.ceil(this.scrollDelay / 1000);
+      // 回填纠正
+      this.delayInput.value = String(safeSeconds);
+      this.updateScrollDelay(safeSeconds * 1000);
+    }
+
+    updateScrollDelay(newDelayMs) {
+      if (typeof newDelayMs !== "number" || newDelayMs <= 0) return;
+      this.scrollDelay = newDelayMs;
+
+      // 运行中重置主线程 interval
+      if (this.isScrolling) {
+        clearInterval(this.scrollInterval);
+        this.scrollInterval = setInterval(() => this.performScroll(), this.scrollDelay);
+      }
+
+      // 通知 worker 刷新延迟
+      if (this.worker) {
+        this.worker.postMessage({ command: "updateDelay", delay: this.scrollDelay });
+      }
     }
   }
 
