@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         linux.do 阅读量刷新脚本
 // @namespace    http://tampermonkey.net/
-// @version      1.0.3
+// @version      1.0.4
 // @description  try to take over the world!
 // @author       You
 // @match        https://linux.do/t/topic/*
@@ -50,6 +50,7 @@
                       box-shadow: 0 4px 10px rgba(0,0,0,0.2);
                       display: flex;
                       gap: 10px;
+                      font-size: 14px;
                   }
 
                   #controlPanel button {
