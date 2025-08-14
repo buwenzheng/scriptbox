@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         linux.do 阅读量刷新脚本
 // @namespace    http://tampermonkey.net/
-// @version      1.0.4
+// @version      1.0.5
 // @description  try to take over the world!
 // @author       You
 // @match        https://linux.do/t/topic/*
@@ -29,9 +29,16 @@
       this.likeMaxDelayMs = 90000; // 90秒
       this.likedPostIds = new Set();
 
+      // Page Visibility API相关
+      this.isPageVisible = !document.hidden;
+      this.forceVisibility = false;
+      this.originalDocumentHidden = null;
+      this.originalDocumentVisibilityState = null;
+
       this.initStyles();
       this.createControlPanel();
       this.setupEventListeners();
+      this.setupVisibilityHooks();
       this.initWorker();
     }
 
@@ -112,6 +119,10 @@
       this.likeToggleBtn.id = "likeToggleBtn";
       this.likeToggleBtn.textContent = "开启随机点赞";
 
+      this.forceVisibilityBtn = document.createElement("button");
+      this.forceVisibilityBtn.id = "forceVisibilityBtn";
+      this.forceVisibilityBtn.textContent = "强制可见性: 关闭";
+
       // 停留时间（秒）设置
       const delayField = document.createElement("div");
       delayField.className = "field";
@@ -142,6 +153,7 @@
         this.startBtn,
         this.pauseBtn,
         this.likeToggleBtn,
+        this.forceVisibilityBtn,
         delayField,
         statusContainer,
         likeStatusContainer
@@ -153,6 +165,7 @@
       this.startBtn.addEventListener("click", () => this.startAutoScroll());
       this.pauseBtn.addEventListener("click", () => this.pauseAutoScroll());
       this.likeToggleBtn.addEventListener("click", () => this.toggleAutoLike());
+      this.forceVisibilityBtn.addEventListener("click", () => this.toggleForceVisibility());
       if (this.delayInput) {
         this.delayInput.addEventListener("change", () => this.updateScrollDelayFromInput());
         this.delayInput.addEventListener("blur", () => this.updateScrollDelayFromInput());
@@ -195,6 +208,11 @@
       this.startBtn.disabled = true;
       this.pauseBtn.disabled = false;
 
+      // 如果页面当前是隐藏的，立即启用强制可见性
+      if (!this.isPageVisible) {
+        this.enableForceVisibility();
+      }
+
       // 立即执行第一次滚动
       this.performScroll();
 
@@ -224,6 +242,9 @@
       if (this.worker) {
         this.worker.postMessage({ command: "pause" });
       }
+
+      // 停止滚动时禁用强制可见性（可选，也可以保持开启）
+      // this.disableForceVisibility();
     }
 
     initWorker() {
@@ -424,6 +445,121 @@
       // 通知 worker 刷新延迟
       if (this.worker) {
         this.worker.postMessage({ command: "updateDelay", delay: this.scrollDelay });
+      }
+    }
+
+    // =============== Page Visibility API处理 ===============
+    setupVisibilityHooks() {
+      // 监听页面可见性变化
+      document.addEventListener('visibilitychange', () => {
+        this.isPageVisible = !document.hidden;
+        console.log(`[AutoScroller] 页面可见性变化: ${this.isPageVisible ? '可见' : '隐藏'}`);
+        
+        // 如果正在滚动且页面变为隐藏，启用强制可见性
+        if (this.isScrolling && !this.isPageVisible) {
+          this.enableForceVisibility();
+        } else if (this.isPageVisible && this.forceVisibility) {
+          // 页面重新可见时，可以选择关闭强制模式（但保持开启以防再次切换）
+          console.log('[AutoScroller] 页面重新可见，保持强制可见性模式');
+        }
+      });
+    }
+
+    enableForceVisibility() {
+      if (this.forceVisibility) return;
+      
+      console.log('[AutoScroller] 启用强制页面可见性模式');
+      this.forceVisibility = true;
+      
+      // 保存原始的document.hidden和visibilityState
+      this.originalDocumentHidden = Object.getOwnPropertyDescriptor(Document.prototype, 'hidden') || 
+                                   Object.getOwnPropertyDescriptor(document, 'hidden');
+      this.originalDocumentVisibilityState = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState') || 
+                                           Object.getOwnPropertyDescriptor(document, 'visibilityState');
+
+      // 重写document.hidden属性，始终返回false
+      try {
+        Object.defineProperty(document, 'hidden', {
+          get: () => false,
+          configurable: true
+        });
+        
+        Object.defineProperty(document, 'visibilityState', {
+          get: () => 'visible',
+          configurable: true
+        });
+        
+        console.log('[AutoScroller] 成功重写document.hidden和visibilityState');
+      } catch (e) {
+        console.warn('[AutoScroller] 无法重写document属性:', e);
+        // 尝试在Document.prototype上重写
+        try {
+          Object.defineProperty(Document.prototype, 'hidden', {
+            get: () => false,
+            configurable: true
+          });
+          
+          Object.defineProperty(Document.prototype, 'visibilityState', {
+            get: () => 'visible',
+            configurable: true
+          });
+          
+          console.log('[AutoScroller] 成功在Document.prototype上重写属性');
+        } catch (e2) {
+          console.warn('[AutoScroller] 完全无法重写document属性:', e2);
+        }
+      }
+
+      // 触发一个假的visibilitychange事件来"欺骗"可能监听的代码
+      this.dispatchFakeVisibilityEvent();
+    }
+
+    disableForceVisibility() {
+      if (!this.forceVisibility) return;
+      
+      console.log('[AutoScroller] 禁用强制页面可见性模式');
+      this.forceVisibility = false;
+      
+      // 恢复原始的document.hidden和visibilityState
+      try {
+        if (this.originalDocumentHidden) {
+          Object.defineProperty(document, 'hidden', this.originalDocumentHidden);
+        } else {
+          delete document.hidden;
+        }
+        
+        if (this.originalDocumentVisibilityState) {
+          Object.defineProperty(document, 'visibilityState', this.originalDocumentVisibilityState);
+        } else {
+          delete document.visibilityState;
+        }
+        
+        console.log('[AutoScroller] 成功恢复document属性');
+      } catch (e) {
+        console.warn('[AutoScroller] 恢复document属性失败:', e);
+      }
+    }
+
+    dispatchFakeVisibilityEvent() {
+      // 派发一个假的visibilitychange事件，让页面认为变为可见
+      setTimeout(() => {
+        try {
+          const event = new Event('visibilitychange', { bubbles: true, cancelable: false });
+          document.dispatchEvent(event);
+          console.log('[AutoScroller] 派发假visibilitychange事件');
+        } catch (e) {
+          console.warn('[AutoScroller] 派发visibilitychange事件失败:', e);
+        }
+      }, 100);
+    }
+
+    toggleForceVisibility() {
+      if (this.forceVisibility) {
+        this.disableForceVisibility();
+        this.forceVisibilityBtn.textContent = "强制可见性: 关闭";
+      } else {
+        this.enableForceVisibility();
+        this.forceVisibilityBtn.textContent = "强制可见性: 开启";
       }
     }
   }
