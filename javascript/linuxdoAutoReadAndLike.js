@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         linux.do 阅读量刷新脚本
 // @namespace    http://tampermonkey.net/
-// @version      1.0.5
+// @version      1.0.6
 // @description  try to take over the world!
 // @author       You
 // @match        https://linux.do/t/topic/*
@@ -40,6 +40,9 @@
       this.setupEventListeners();
       this.setupVisibilityHooks();
       this.initWorker();
+      
+      // 默认启用强制可见性功能
+      this.enableForceVisibility();
     }
 
     initStyles() {
@@ -50,53 +53,97 @@
                       bottom: 20px;
                       left: 50%;
                       transform: translateX(-50%);
-                      z-index: 100;
-                      background: rgba(255,255,255,0.9);
-                      padding: 10px 20px;
-                      border-radius: 20px;
-                      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+                      z-index: 10000;
+                      background: rgba(255,255,255,0.95);
+                      padding: 12px 16px;
+                      border-radius: 16px;
+                      box-shadow: 0 6px 20px rgba(0,0,0,0.15);
                       display: flex;
-                      gap: 10px;
-                      font-size: 14px;
+                      align-items: center;
+                      gap: 12px;
+                      font-size: 13px;
+                      backdrop-filter: blur(10px);
+                      border: 1px solid rgba(255,255,255,0.8);
+                      max-width: 90vw;
+                      flex-wrap: wrap;
                   }
 
                   #controlPanel button {
-                      padding: 8px 16px;
+                      padding: 6px 12px;
                       border: none;
-                      border-radius: 5px;
+                      border-radius: 8px;
                       background: #4a89dc;
                       color: white;
                       cursor: pointer;
-                      transition: background 0.3s;
+                      transition: all 0.2s;
+                      font-size: 12px;
+                      font-weight: 500;
+                      white-space: nowrap;
                   }
 
                   #controlPanel button:hover {
                       background: #3b7dd8;
+                      transform: translateY(-1px);
                   }
 
                   #controlPanel button:disabled {
                       background: #cccccc;
                       cursor: not-allowed;
+                      transform: none;
                   }
 
                   #controlPanel .field {
                       display: flex;
                       align-items: center;
                       gap: 6px;
+                      background: rgba(74, 137, 220, 0.1);
+                      padding: 4px 8px;
+                      border-radius: 8px;
+                      border: 1px solid rgba(74, 137, 220, 0.2);
+                  }
+
+                  #controlPanel .field label {
+                      font-size: 11px;
+                      color: #4a89dc;
+                      font-weight: 600;
                   }
 
                   #controlPanel input[type="number"] {
-                      width: 80px;
-                      padding: 6px 8px;
+                      width: 50px;
+                      padding: 4px 6px;
                       border: 1px solid #ddd;
-                      border-radius: 5px;
+                      border-radius: 4px;
                       outline: none;
+                      font-size: 12px;
+                      text-align: center;
                   }
 
                   .status {
                       display: flex;
                       align-items: center;
-                      padding: 0 10px;
+                      font-size: 11px;
+                      color: #666;
+                  }
+
+                  .status-group {
+                      display: flex;
+                      gap: 8px;
+                      background: rgba(0,0,0,0.05);
+                      padding: 4px 8px;
+                      border-radius: 8px;
+                  }
+
+                  @media (max-width: 768px) {
+                      #controlPanel {
+                          bottom: 10px;
+                          padding: 8px 12px;
+                          gap: 8px;
+                      }
+                      
+                      #controlPanel button {
+                          padding: 5px 10px;
+                          font-size: 11px;
+                      }
                   }
               `;
       document.head.appendChild(style);
@@ -119,9 +166,7 @@
       this.likeToggleBtn.id = "likeToggleBtn";
       this.likeToggleBtn.textContent = "开启随机点赞";
 
-      this.forceVisibilityBtn = document.createElement("button");
-      this.forceVisibilityBtn.id = "forceVisibilityBtn";
-      this.forceVisibilityBtn.textContent = "强制可见性: 关闭";
+
 
       // 停留时间（秒）设置
       const delayField = document.createElement("div");
@@ -136,27 +181,28 @@
       this.delayInput.value = String(Math.floor(this.scrollDelay / 1000));
       delayField.append(delayLabel, this.delayInput);
 
+      // 状态信息分组
+      const statusGroup = document.createElement("div");
+      statusGroup.className = "status-group";
+      
       const statusContainer = document.createElement("div");
       statusContainer.className = "status";
-      statusContainer.innerHTML = '状态: <span id="statusText">暂停中</span>';
-
+      statusContainer.innerHTML = '滚动: <span id="statusText">暂停</span>';
       this.statusText = statusContainer.querySelector("#statusText");
 
       const likeStatusContainer = document.createElement("div");
       likeStatusContainer.className = "status";
-      likeStatusContainer.innerHTML =
-        '点赞: <span id="likeStatusText">关闭</span>';
-      this.likeStatusText =
-        likeStatusContainer.querySelector("#likeStatusText");
+      likeStatusContainer.innerHTML = '点赞: <span id="likeStatusText">关闭</span>';
+      this.likeStatusText = likeStatusContainer.querySelector("#likeStatusText");
+
+      statusGroup.append(statusContainer, likeStatusContainer);
 
       this.controlPanel.append(
         this.startBtn,
         this.pauseBtn,
         this.likeToggleBtn,
-        this.forceVisibilityBtn,
         delayField,
-        statusContainer,
-        likeStatusContainer
+        statusGroup
       );
       document.body.appendChild(this.controlPanel);
     }
@@ -165,7 +211,6 @@
       this.startBtn.addEventListener("click", () => this.startAutoScroll());
       this.pauseBtn.addEventListener("click", () => this.pauseAutoScroll());
       this.likeToggleBtn.addEventListener("click", () => this.toggleAutoLike());
-      this.forceVisibilityBtn.addEventListener("click", () => this.toggleForceVisibility());
       if (this.delayInput) {
         this.delayInput.addEventListener("change", () => this.updateScrollDelayFromInput());
         this.delayInput.addEventListener("blur", () => this.updateScrollDelayFromInput());
@@ -186,6 +231,7 @@
     performScroll() {
       if (this.isAtBottom()) {
         this.pauseAutoScroll();
+        this.statusText.textContent = "已完成";
         return;
       }
 
@@ -204,7 +250,7 @@
       if (this.isScrolling) return;
 
       this.isScrolling = true;
-      this.statusText.textContent = "滚动中...";
+      this.statusText.textContent = "进行中";
       this.startBtn.disabled = true;
       this.pauseBtn.disabled = false;
 
@@ -232,7 +278,7 @@
       if (!this.isScrolling) return;
 
       this.isScrolling = false;
-      this.statusText.textContent = "暂停中";
+      this.statusText.textContent = "暂停";
       this.startBtn.disabled = false;
       this.pauseBtn.disabled = true;
 
@@ -553,15 +599,7 @@
       }, 100);
     }
 
-    toggleForceVisibility() {
-      if (this.forceVisibility) {
-        this.disableForceVisibility();
-        this.forceVisibilityBtn.textContent = "强制可见性: 关闭";
-      } else {
-        this.enableForceVisibility();
-        this.forceVisibilityBtn.textContent = "强制可见性: 开启";
-      }
-    }
+
   }
 
   (function initAutoScroll() {
